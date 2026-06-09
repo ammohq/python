@@ -172,6 +172,104 @@ def test_do_send_swallows_errors(mock_post, client):
     client._do_send({"message": "test"})
 
 
+# --- before_send ---
+
+
+def make_client(before_send):
+    return BoobooClient(
+        "test-dsn-123", endpoint="https://example.com/ingest/", before_send=before_send
+    )
+
+
+@patch("requests.post")
+def test_before_send_can_mutate_payload(mock_post):
+    def hook(event):
+        event["message"] = "[scrubbed]"
+        return event
+
+    c = make_client(hook)
+    c._do_send({"message": "NL91ABNA0417164300", "level": "error"})
+    c._flush()
+
+    sent = json.loads(mock_post.call_args.kwargs["data"])
+    assert sent["message"] == "[scrubbed]"
+
+
+@patch("requests.post")
+def test_before_send_can_replace_payload(mock_post):
+    c = make_client(lambda event: {"message": "replaced"})
+    c._do_send({"message": "original"})
+    c._flush()
+
+    assert json.loads(mock_post.call_args.kwargs["data"]) == {"message": "replaced"}
+
+
+@patch("requests.post")
+def test_before_send_returning_none_drops_event(mock_post):
+    c = make_client(lambda event: None)
+    c._do_send({"message": "drop me"})
+    c._flush()
+
+    mock_post.assert_not_called()
+
+
+@patch("requests.post")
+def test_before_send_raising_drops_event(mock_post):
+    def hook(event):
+        raise RuntimeError("hook bug")
+
+    c = make_client(hook)
+    # Must not raise, and must not send the unscrubbed event
+    c._do_send({"message": "secret"})
+    c._flush()
+
+    mock_post.assert_not_called()
+
+
+@patch("requests.post")
+def test_before_send_runs_before_size_check(mock_post):
+    """A hook that shrinks an oversized payload rescues it."""
+    c = make_client(lambda event: {"message": "small"})
+    c._do_send({"message": "x" * 200_000})
+    c._flush()
+
+    mock_post.assert_called_once()
+
+
+@patch("requests.post")
+def test_before_send_applies_to_capture_exception(mock_post):
+    c = make_client(lambda event: None)
+    c._ensure_worker = lambda: False  # force sync send
+
+    try:
+        raise ValueError("boom")
+    except Exception as exc:
+        c._capture_and_send(exc)
+    c._flush()
+
+    mock_post.assert_not_called()
+
+
+@patch("requests.post")
+def test_before_send_applies_to_capture_message(mock_post):
+    def hook(event):
+        event["message"] = "[redacted]"
+        return event
+
+    c = make_client(hook)
+    c._ensure_worker = lambda: False  # force sync send
+    c.capture_message("NL91ABNA0417164300")
+    c._flush()
+
+    sent = json.loads(mock_post.call_args.kwargs["data"])
+    assert sent["message"] == "[redacted]"
+
+
+def test_apply_before_send_noop_without_hook(client):
+    payload = {"message": "untouched"}
+    assert client._apply_before_send(payload) is payload
+
+
 # --- capture_exception ---
 
 

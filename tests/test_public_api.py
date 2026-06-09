@@ -37,6 +37,14 @@ def test_init_sets_environment():
     assert booboo._client.environment == "staging"
 
 
+def test_init_sets_before_send():
+    def hook(event):
+        return event
+
+    booboo.init("dsn", endpoint="https://example.com/ingest/", before_send=hook)
+    assert booboo._client.before_send is hook
+
+
 # --- capture_exception delegates ---
 
 

@@ -1,11 +1,11 @@
 from ._client import BoobooClient
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 _client = None
 
 
-def init(dsn, app=None, environment="", ignore_errors=None, endpoint=None):
+def init(dsn, app=None, environment="", ignore_errors=None, endpoint=None, before_send=None):
     """Initialize booboo error tracking.
 
     ``dsn`` accepts either a bare token (``"abc123..."``) or a URL-style DSN
@@ -17,10 +17,18 @@ def init(dsn, app=None, environment="", ignore_errors=None, endpoint=None):
     Pass app= to explicitly register with a specific app instance.
     Pass environment= to tag all events with an environment (e.g. "production").
     Pass ignore_errors= to suppress specific exception types (uses isinstance matching).
+    Pass before_send= to inspect or modify every event before transmission —
+    useful for value-level PII scrubbing (IBANs, emails in variable values).
+    The hook receives the event dict and must return it (possibly modified),
+    or None to drop the event. If the hook raises, the event is dropped.
     """
     global _client
     _client = BoobooClient(
-        dsn, environment=environment, ignore_errors=ignore_errors, endpoint=endpoint
+        dsn,
+        environment=environment,
+        ignore_errors=ignore_errors,
+        endpoint=endpoint,
+        before_send=before_send,
     )
     _client.install(app)
 

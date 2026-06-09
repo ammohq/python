@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.0 (2026-06-09)
+
+### Features
+
+- **`before_send` hook**: New `before_send` parameter on `booboo.init()` (and `BoobooClient`). The hook receives every event dict before transmission and must return it (possibly modified), or `None` to drop the event. Enables value-level PII scrubbing (IBANs, payment references, emails inside variable values) that the built-in name-based scrubber cannot do. If the hook raises, the event is dropped — never sent unscrubbed. Runs on the background sender thread, off the request path.
+
 ## 0.13.0 (2026-05-13)
 
 ### Features

@@ -34,12 +34,13 @@ def _parse_dsn(dsn):
 
 
 class BoobooClient:
-    def __init__(self, dsn, environment="", ignore_errors=None, endpoint=None):
+    def __init__(self, dsn, environment="", ignore_errors=None, endpoint=None, before_send=None):
         token, derived_endpoint = _parse_dsn(dsn)
         self.dsn = token
         self.endpoint = endpoint or derived_endpoint or DEFAULT_ENDPOINT
         self.environment = environment
         self.ignore_errors = tuple(ignore_errors) if ignore_errors else ()
+        self.before_send = before_send
         self._orig_excepthook = None
         self._queue = queue.Queue(maxsize=100)
         self._worker = None
@@ -342,8 +343,24 @@ class BoobooClient:
         except Exception:
             pass
 
+    def _apply_before_send(self, payload):
+        """Run the before_send hook. Returns the payload to send, or None to drop.
+
+        If the hook raises, the event is dropped: for a PII-scrubbing hook,
+        sending the unscrubbed event on hook failure would be a leak.
+        """
+        if self.before_send is None:
+            return payload
+        try:
+            return self.before_send(payload)
+        except Exception:
+            return None
+
     def _do_send(self, payload):
         try:
+            payload = self._apply_before_send(payload)
+            if payload is None:
+                return
             data = json.dumps(payload).encode("utf-8")
             if len(data) > 102_400:
                 return  # too large, drop silently
