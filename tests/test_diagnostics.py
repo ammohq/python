@@ -25,7 +25,7 @@ def _resp(status, body=None, text=""):
 
 def test_2xx_is_silent(client, caplog):
     with (
-        patch("booboo._client.requests.post", return_value=_resp(201, {})),
+        patch("requests.post", return_value=_resp(201, {})),
         caplog.at_level(logging.WARNING, logger="booboo"),
     ):
         client._do_send({"message": "x"})
@@ -34,7 +34,7 @@ def test_2xx_is_silent(client, caplog):
 
 def test_non_2xx_warns_with_server_detail(client, caplog):
     with (
-        patch("booboo._client.requests.post", return_value=_resp(403, {"detail": "Invalid DSN."})),
+        patch("requests.post", return_value=_resp(403, {"detail": "Invalid DSN."})),
         caplog.at_level(logging.WARNING, logger="booboo"),
     ):
         client._do_send({"message": "x"})
@@ -45,7 +45,7 @@ def test_non_2xx_warns_with_server_detail(client, caplog):
 
 def test_transport_error_warns(client, caplog):
     with (
-        patch("booboo._client.requests.post", side_effect=OSError("refused")),
+        patch("requests.post", side_effect=OSError("refused")),
         caplog.at_level(logging.WARNING, logger="booboo"),
     ):
         client._do_send({"message": "x"})
@@ -54,7 +54,7 @@ def test_transport_error_warns(client, caplog):
 
 def test_too_large_warns(client, caplog):
     with (
-        patch("booboo._client.requests.post") as post,
+        patch("requests.post") as post,
         caplog.at_level(logging.WARNING, logger="booboo"),
     ):
         client._do_send({"message": "x" * 200_000})
@@ -64,7 +64,7 @@ def test_too_large_warns(client, caplog):
 
 def test_warnings_are_rate_limited_per_cause(client, caplog):
     with (
-        patch("booboo._client.requests.post", return_value=_resp(403, {"detail": "Invalid DSN."})),
+        patch("requests.post", return_value=_resp(403, {"detail": "Invalid DSN."})),
         caplog.at_level(logging.WARNING, logger="booboo"),
     ):
         for _ in range(5):
@@ -72,7 +72,7 @@ def test_warnings_are_rate_limited_per_cause(client, caplog):
     assert len(caplog.records) == 1
     # A different cause still gets through.
     with (
-        patch("booboo._client.requests.post", return_value=_resp(429, {"detail": "Quota."})),
+        patch("requests.post", return_value=_resp(429, {"detail": "Quota."})),
         caplog.at_level(logging.WARNING, logger="booboo"),
     ):
         client._do_send({"message": "x"})
@@ -83,7 +83,7 @@ def test_debug_logs_each_send(caplog):
     c = BoobooClient("test-dsn", endpoint="https://example.com/", debug=True)
     try:
         with (
-            patch("booboo._client.requests.post", return_value=_resp(201, {})),
+            patch("requests.post", return_value=_resp(201, {})),
             caplog.at_level(logging.DEBUG, logger="booboo"),
         ):
             c._do_send({"message": "x"})

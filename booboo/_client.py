@@ -83,8 +83,10 @@ class BoobooClient:
     def _warn(self, key, msg, *args):
         """logger.warning, at most once per _WARN_INTERVAL per key (always in debug)."""
         now = time.monotonic()
-        last = self._last_warning.get(key, 0.0)
-        if self.debug or now - last >= _WARN_INTERVAL:
+        last = self._last_warning.get(key)
+        # `last is None` rather than a 0.0 default: monotonic() starts near 0 on
+        # a freshly booted host, which would swallow the first warning.
+        if self.debug or last is None or now - last >= _WARN_INTERVAL:
             self._last_warning[key] = now
             logger.warning(msg, *args)
 
