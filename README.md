@@ -46,11 +46,13 @@ except Exception as e:
 ## User Context
 
 ```python
-booboo.set_user({
-    "id": "123",
-    "email": "user@example.com",
-    "username": "alice",
-})
+booboo.set_user(
+    {
+        "id": "123",
+        "email": "user@example.com",
+        "username": "alice",
+    }
+)
 ```
 
 ## Framework Integration
@@ -102,6 +104,7 @@ booboo.init(
 | `release` | `BOOBOO_RELEASE` env var, or `""` | Release/version identifier (e.g. a git SHA or `"1.4.2"`). Attached to every event; powers "introduced in release X" on issues. |
 | `ignore_errors` | `None` | List of exception classes to suppress. Uses `isinstance()` so subclasses are matched. |
 | `endpoint` | derived from DSN URL, or `https://ingest.booboo.dev/` | Override the ingest endpoint. Normally unnecessary — the SDK derives it from the DSN URL automatically. |
+| `debug` | `False` | Log every send/drop on the `booboo` logger (also `BOOBOO_DEBUG=1`). Rejected or undeliverable events are always logged as warnings, rate-limited to one per minute per cause. |
 | `before_send` | `None` | Hook called with the event dict before every send. Return the (possibly modified) event, or `None` to drop it. If the hook raises, the event is dropped. |
 
 ## before_send Hook
@@ -114,6 +117,7 @@ def drop_health_checks(event):
     if "/healthz" in event.get("message", ""):
         return None  # drop
     return event
+
 
 booboo.init(
     dsn="https://YOUR_TOKEN@ingest.booboo.dev/your-org/your-project",
@@ -137,6 +141,7 @@ import re
 
 IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
 
+
 def scrub_ibans(event):
     all_frames = list(event.get("stacktrace", []))
     for exc in event.get("exceptions", []):
@@ -147,6 +152,7 @@ def scrub_ibans(event):
             frame["vars"][name] = IBAN_RE.sub("[iban]", value)
     event["message"] = IBAN_RE.sub("[iban]", event.get("message", ""))
     return event
+
 
 booboo.init(
     dsn="https://YOUR_TOKEN@ingest.booboo.dev/your-org/your-project",

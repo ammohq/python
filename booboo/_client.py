@@ -1,11 +1,13 @@
 import atexit
 import contextlib
 import json
+import logging
 import os
 import platform
 import queue
 import sys
 import threading
+import time
 from urllib.parse import urlparse
 
 import requests
@@ -15,6 +17,13 @@ from ._stacktrace import extract_exception_chain, extract_frames
 
 _SENTINEL = object()
 DEFAULT_ENDPOINT = "https://ingest.booboo.dev/"
+
+# Diagnostics go through the standard logging module, so they show up in the
+# host app's logs (or on stderr via logging's last-resort handler when nothing
+# is configured) instead of being swallowed. Warnings are rate-limited so a
+# misconfigured DSN on a busy app doesn't flood the log.
+logger = logging.getLogger("booboo")
+_WARN_INTERVAL = 60.0
 
 
 def _parse_dsn(dsn):
@@ -35,7 +44,16 @@ def _parse_dsn(dsn):
 
 
 class BoobooClient:
-    def __init__(self, dsn, environment="", release=None, ignore_errors=None, endpoint=None, before_send=None):
+    def __init__(
+        self,
+        dsn,
+        environment="",
+        release=None,
+        ignore_errors=None,
+        endpoint=None,
+        before_send=None,
+        debug=False,
+    ):
         token, derived_endpoint = _parse_dsn(dsn)
         self.dsn = token
         self.endpoint = endpoint or derived_endpoint or DEFAULT_ENDPOINT
@@ -49,7 +67,26 @@ class BoobooClient:
         self._worker_started = False
         self._lock = threading.Lock()
         self._user = None
+        self._last_warning = {}
+        self.debug = bool(debug) or os.environ.get("BOOBOO_DEBUG", "") in ("1", "true", "yes")
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+            if not logger.handlers and not logging.getLogger().handlers:
+                logger.addHandler(logging.StreamHandler())
+            logger.debug(
+                "booboo: initialised, endpoint=%s environment=%r", self.endpoint, environment
+            )
+        if not token:
+            self._warn("no-dsn", "booboo: no DSN configured — events will not be sent")
         atexit.register(self._flush)
+
+    def _warn(self, key, msg, *args):
+        """logger.warning, at most once per _WARN_INTERVAL per key (always in debug)."""
+        now = time.monotonic()
+        last = self._last_warning.get(key, 0.0)
+        if self.debug or now - last >= _WARN_INTERVAL:
+            self._last_warning[key] = now
+            logger.warning(msg, *args)
 
     def set_user(self, user_data):
         """Set user context for subsequent events."""
@@ -122,11 +159,19 @@ class BoobooClient:
 
         @app.errorhandler(Exception)
         def _booboo_flask_handler(exc):
+            # HTTP errors (404, 405, abort(403)...) are responses, not crashes.
+            # Return them so Flask renders the proper status — re-raising from
+            # an Exception handler turned every 404 into a 500.
             try:
-                from werkzeug.exceptions import NotFound
+                from werkzeug.exceptions import HTTPException
 
-                if isinstance(exc, NotFound):
-                    raise
+                if isinstance(exc, HTTPException):
+                    # abort(503) is worth an event; Flask's own wrapping of an
+                    # unhandled error (InternalServerError with original_exception)
+                    # already came through here as the original — don't double-send.
+                    if (exc.code or 0) >= 500 and getattr(exc, "original_exception", None) is None:
+                        client._capture_and_send(exc)
+                    return exc
             except ImportError:
                 pass
             request_data = None
@@ -272,14 +317,7 @@ class BoobooClient:
             "release": self.release,
         }
 
-        try:
-            if self._ensure_worker():
-                with contextlib.suppress(queue.Full):
-                    self._queue.put_nowait(payload)
-            else:
-                self._do_send(payload)
-        except Exception:
-            pass
+        self._enqueue(payload)
 
     def _capture_and_send(self, exc, request_data=None, user_data=None):
         if self.ignore_errors and isinstance(exc, self.ignore_errors):
@@ -328,14 +366,23 @@ class BoobooClient:
         if request_data:
             payload["request"] = request_data
 
+        self._enqueue(payload)
+
+    def _enqueue(self, payload):
         try:
             if self._ensure_worker():
-                with contextlib.suppress(queue.Full):
+                try:
                     self._queue.put_nowait(payload)
+                except queue.Full:
+                    self._warn(
+                        "queue-full",
+                        "booboo: event dropped, send queue full (%d pending)",
+                        self._queue.maxsize,
+                    )
             else:
                 self._do_send(payload)  # sync fallback
-        except Exception:
-            pass
+        except Exception as e:
+            self._warn("enqueue", "booboo: could not queue event: %r", e)
 
     def _flush(self):
         """Wait for background worker to drain (called at exit)."""
@@ -364,15 +411,40 @@ class BoobooClient:
         try:
             payload = self._apply_before_send(payload)
             if payload is None:
+                logger.debug("booboo: event dropped by before_send")
                 return
             data = json.dumps(payload).encode("utf-8")
             if len(data) > 102_400:
-                return  # too large, drop silently
-            requests.post(
+                self._warn(
+                    "too-large",
+                    "booboo: event dropped, payload is %d bytes (limit 100 KB)",
+                    len(data),
+                )
+                return
+        except Exception as e:
+            self._warn("serialise", "booboo: could not serialise event: %r", e)
+            return
+        try:
+            resp = requests.post(
                 self.endpoint,
                 data=data,
                 headers={"X-Booboo-DSN": self.dsn, "Content-Type": "application/json"},
                 timeout=5,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            self._warn("transport", "booboo: could not reach %s: %r", self.endpoint, e)
+            return
+        status = getattr(resp, "status_code", None)
+        if not isinstance(status, int) or 200 <= status < 300:
+            logger.debug("booboo: event sent (HTTP %s)", status)
+            return
+        detail = ""
+        with contextlib.suppress(Exception):
+            detail = (resp.json() or {}).get("detail") or resp.text[:200]
+        self._warn(
+            f"http-{status}",
+            "booboo: event rejected by %s: HTTP %s %s",
+            self.endpoint,
+            status,
+            detail,
+        )

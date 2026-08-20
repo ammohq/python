@@ -5,7 +5,16 @@ __version__ = "0.15.0"
 _client = None
 
 
-def init(dsn, app=None, environment="", release=None, ignore_errors=None, endpoint=None, before_send=None):
+def init(
+    dsn,
+    app=None,
+    environment="",
+    release=None,
+    ignore_errors=None,
+    endpoint=None,
+    before_send=None,
+    debug=False,
+):
     """Initialize booboo error tracking.
 
     ``dsn`` accepts either a bare token (``"abc123..."``) or a URL-style DSN
@@ -20,6 +29,9 @@ def init(dsn, app=None, environment="", release=None, ignore_errors=None, endpoi
     "1.4.2"); defaults to the BOOBOO_RELEASE environment variable when unset.
     Used for "introduced in release X" tracking on issues.
     Pass ignore_errors= to suppress specific exception types (uses isinstance matching).
+    Pass debug=True (or set BOOBOO_DEBUG=1) to log every send on the "booboo"
+    logger. Rejected or undeliverable events are always logged as warnings
+    (rate-limited to one per minute per cause).
     Pass before_send= to inspect or modify every event before transmission —
     useful for value-level PII scrubbing (IBANs, emails in variable values).
     The hook receives the event dict and must return it (possibly modified),
@@ -33,6 +45,7 @@ def init(dsn, app=None, environment="", release=None, ignore_errors=None, endpoi
         ignore_errors=ignore_errors,
         endpoint=endpoint,
         before_send=before_send,
+        debug=debug,
     )
     _client.install(app)
 

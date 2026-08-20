@@ -1,8 +1,15 @@
 # Changelog
 
-## 0.15.0 (2026-07-10)
+## 0.15.0 (2026-08-20)
+
+### Fixes
+
+- **Flask: HTTP errors are no longer turned into 500s.** The error handler returned a bare `raise` for everything but `NotFound`, so `abort(403)`, 405s and friends surfaced as Internal Server Errors. `HTTPException`s are now returned as-is (5xx ones are still reported); only unhandled exceptions are captured and re-raised.
+- **Delivery failures are logged.** A rejected event (wrong DSN → 403, quota → 429, oversized payload) or an unreachable endpoint used to fail silently. They now emit `logger.warning` on the `booboo` logger (rate-limited to once per minute per cause), so a broken install is visible in your app log instead of looking like "no errors yet".
 
 ### Features
+
+- **`debug` option**: `booboo.init(..., debug=True)` (or `BOOBOO_DEBUG=1`) logs every send and drop on the `booboo` logger.
 
 - **`release` option**: New `release` parameter on `booboo.init()` (and `BoobooClient`). Tags every event with a release/version identifier (e.g. a git SHA or `"1.4.2"`), enabling release tracking on issues ("introduced in release X", per-release filtering). Falls back to the `BOOBOO_RELEASE` environment variable when unset.
 
