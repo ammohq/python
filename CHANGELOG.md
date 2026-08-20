@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0 (2026-08-20)
+
+### Features
+
+- **Install handshake.** `booboo.init()` now sends a tiny `{"handshake": true}` ping so your project shows as *connected* in the dashboard before the first error ever happens. Not an event: it never counts toward your quota and `before_send` doesn't see it. Disable with `BOOBOO_HANDSHAKE=0`.
+
 ## 0.15.0 (2026-08-20)
 
 ### Fixes

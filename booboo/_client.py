@@ -98,6 +98,7 @@ class BoobooClient:
         """Hook sys.excepthook, auto-detect frameworks, register middleware/handlers."""
         self._orig_excepthook = sys.excepthook
         sys.excepthook = self._excepthook
+        self._handshake()
 
         # Django: auto-detect -> inject middleware + patch exception handler
         try:
@@ -269,6 +270,16 @@ class BoobooClient:
             except RuntimeError:
                 return False
 
+    def _handshake(self):
+        """Tell the server this install is alive, so the project shows as
+        "connected" before the first error. Goes through the normal send path
+        (background thread, same diagnostics); disable with BOOBOO_HANDSHAKE=0."""
+        if os.environ.get("BOOBOO_HANDSHAKE", "1") in ("0", "false", "no") or not self.dsn:
+            return
+        from . import __version__
+
+        self._enqueue({"handshake": True, "sdk": f"python/{__version__}"})
+
     def _worker_loop(self):
         """Background thread: drain queue, send events, exit on sentinel."""
         while True:
@@ -411,7 +422,9 @@ class BoobooClient:
 
     def _do_send(self, payload):
         try:
-            payload = self._apply_before_send(payload)
+            # The handshake isn't an event; user hooks never see it.
+            if not payload.get("handshake"):
+                payload = self._apply_before_send(payload)
             if payload is None:
                 logger.debug("booboo: event dropped by before_send")
                 return

@@ -105,6 +105,7 @@ booboo.init(
 | `ignore_errors` | `None` | List of exception classes to suppress. Uses `isinstance()` so subclasses are matched. |
 | `endpoint` | derived from DSN URL, or `https://ingest.booboo.dev/` | Override the ingest endpoint. Normally unnecessary — the SDK derives it from the DSN URL automatically. |
 | `debug` | `False` | Log every send/drop on the `booboo` logger (also `BOOBOO_DEBUG=1`). Rejected or undeliverable events are always logged as warnings, rate-limited to one per minute per cause. |
+| — | — | `init()` also sends a one-off install handshake (`BOOBOO_HANDSHAKE=0` disables it) so the dashboard shows the project as connected before the first error. |
 | `before_send` | `None` | Hook called with the event dict before every send. Return the (possibly modified) event, or `None` to drop it. If the hook raises, the event is dropped. |
 
 ## before_send Hook
