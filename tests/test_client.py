@@ -29,6 +29,26 @@ def test_client_default_environment():
     c._flush()
 
 
+def test_client_release_option():
+    c = BoobooClient("dsn", release="1.4.2", endpoint="https://example.com/ingest/")
+    assert c.release == "1.4.2"
+    c._flush()
+
+
+def test_client_release_env_fallback(monkeypatch):
+    monkeypatch.setenv("BOOBOO_RELEASE", "abc123")
+    c = BoobooClient("dsn", endpoint="https://example.com/ingest/")
+    assert c.release == "abc123"
+    c._flush()
+
+
+def test_client_release_default_empty(monkeypatch):
+    monkeypatch.delenv("BOOBOO_RELEASE", raising=False)
+    c = BoobooClient("dsn", endpoint="https://example.com/ingest/")
+    assert c.release == ""
+    c._flush()
+
+
 # --- set_user ---
 
 
@@ -63,6 +83,7 @@ def test_capture_and_send_payload_shape(client):
     assert p["exception_type"] == "ValueError"
     assert p["level"] == "error"
     assert p["environment"] == "testing"
+    assert "release" in p
     assert isinstance(p["stacktrace"], list)
     assert isinstance(p["exceptions"], list)
     assert p["tags"] == {"runtime": "python"}

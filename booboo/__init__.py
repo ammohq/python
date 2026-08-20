@@ -1,11 +1,11 @@
 from ._client import BoobooClient
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 
 _client = None
 
 
-def init(dsn, app=None, environment="", ignore_errors=None, endpoint=None, before_send=None):
+def init(dsn, app=None, environment="", release=None, ignore_errors=None, endpoint=None, before_send=None):
     """Initialize booboo error tracking.
 
     ``dsn`` accepts either a bare token (``"abc123..."``) or a URL-style DSN
@@ -16,6 +16,9 @@ def init(dsn, app=None, environment="", ignore_errors=None, endpoint=None, befor
     Always hooks sys.excepthook. Auto-detects Django, Flask, and FastAPI.
     Pass app= to explicitly register with a specific app instance.
     Pass environment= to tag all events with an environment (e.g. "production").
+    Pass release= to tag all events with a release/version (e.g. a git SHA or
+    "1.4.2"); defaults to the BOOBOO_RELEASE environment variable when unset.
+    Used for "introduced in release X" tracking on issues.
     Pass ignore_errors= to suppress specific exception types (uses isinstance matching).
     Pass before_send= to inspect or modify every event before transmission —
     useful for value-level PII scrubbing (IBANs, emails in variable values).
@@ -26,6 +29,7 @@ def init(dsn, app=None, environment="", ignore_errors=None, endpoint=None, befor
     _client = BoobooClient(
         dsn,
         environment=environment,
+        release=release,
         ignore_errors=ignore_errors,
         endpoint=endpoint,
         before_send=before_send,

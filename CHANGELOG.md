@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0 (2026-07-10)
+
+### Features
+
+- **`release` option**: New `release` parameter on `booboo.init()` (and `BoobooClient`). Tags every event with a release/version identifier (e.g. a git SHA or `"1.4.2"`), enabling release tracking on issues ("introduced in release X", per-release filtering). Falls back to the `BOOBOO_RELEASE` environment variable when unset.
+
 ## 0.14.0 (2026-06-09)
 
 ### Features

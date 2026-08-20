@@ -1,6 +1,7 @@
 import atexit
 import contextlib
 import json
+import os
 import platform
 import queue
 import sys
@@ -34,11 +35,12 @@ def _parse_dsn(dsn):
 
 
 class BoobooClient:
-    def __init__(self, dsn, environment="", ignore_errors=None, endpoint=None, before_send=None):
+    def __init__(self, dsn, environment="", release=None, ignore_errors=None, endpoint=None, before_send=None):
         token, derived_endpoint = _parse_dsn(dsn)
         self.dsn = token
         self.endpoint = endpoint or derived_endpoint or DEFAULT_ENDPOINT
         self.environment = environment
+        self.release = release if release is not None else os.environ.get("BOOBOO_RELEASE", "")
         self.ignore_errors = tuple(ignore_errors) if ignore_errors else ()
         self.before_send = before_send
         self._orig_excepthook = None
@@ -267,6 +269,7 @@ class BoobooClient:
             "context": context,
             "tags": {"runtime": "python"},
             "environment": self.environment,
+            "release": self.release,
         }
 
         try:
@@ -320,6 +323,7 @@ class BoobooClient:
             "context": context,
             "tags": {"runtime": "python"},
             "environment": self.environment,
+            "release": self.release,
         }
         if request_data:
             payload["request"] = request_data

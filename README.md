@@ -89,6 +89,7 @@ Same auto-detection as Flask if `app` is not passed explicitly.
 booboo.init(
     dsn="https://YOUR_TOKEN@ingest.booboo.dev/your-org/your-project",
     environment="production",
+    release="1.4.2",
     ignore_errors=[KeyboardInterrupt, ConnectionError],
 )
 ```
@@ -98,16 +99,38 @@ booboo.init(
 | `dsn` | (required) | Your project's DSN from booboo.dev |
 | `app` | `None` | Flask/FastAPI app instance for explicit registration |
 | `environment` | `""` | Environment name (e.g. `"production"`, `"staging"`). Attached to every event. |
+| `release` | `BOOBOO_RELEASE` env var, or `""` | Release/version identifier (e.g. a git SHA or `"1.4.2"`). Attached to every event; powers "introduced in release X" on issues. |
 | `ignore_errors` | `None` | List of exception classes to suppress. Uses `isinstance()` so subclasses are matched. |
 | `endpoint` | derived from DSN URL, or `https://ingest.booboo.dev/` | Override the ingest endpoint. Normally unnecessary — the SDK derives it from the DSN URL automatically. |
 | `before_send` | `None` | Hook called with the event dict before every send. Return the (possibly modified) event, or `None` to drop it. If the hook raises, the event is dropped. |
 
 ## before_send Hook
 
-Use `before_send` to inspect or modify events before they leave your server, or to drop
-them entirely. The SDK already scrubs sensitive variables *by name* (`password`, `token`,
-…), but only your code knows which *values* are sensitive — use `before_send` for
-value-level scrubbing such as IBANs, payment references, or emails inside variable values:
+Use `before_send` to inspect or modify events before they leave your server. Return the
+event to send it, or `None` to drop it:
+
+```python
+def drop_health_checks(event):
+    if "/healthz" in event.get("message", ""):
+        return None  # drop
+    return event
+
+booboo.init(
+    dsn="https://YOUR_TOKEN@ingest.booboo.dev/your-org/your-project",
+    before_send=drop_health_checks,
+)
+```
+
+The hook receives every event (exceptions and `capture_message()` calls alike) and runs on
+the SDK's background sender thread, so it never adds latency to your request path. If the
+hook raises, the event is dropped — never sent unmodified.
+
+### Value-level PII scrubbing
+
+The SDK already scrubs sensitive variables *by name* (`password`, `token`, …), but only
+your code knows which *values* are sensitive. A thorough scrubber must visit every place
+values appear: the message, the top-level stacktrace's variables, and each chained
+exception's message and frames:
 
 ```python
 import re
@@ -115,7 +138,6 @@ import re
 IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
 
 def scrub_ibans(event):
-    # Frames live on the top-level stacktrace and on each chained exception
     all_frames = list(event.get("stacktrace", []))
     for exc in event.get("exceptions", []):
         all_frames.extend(exc.get("stacktrace", []))
@@ -124,16 +146,13 @@ def scrub_ibans(event):
         for name, value in frame.get("vars", {}).items():
             frame["vars"][name] = IBAN_RE.sub("[iban]", value)
     event["message"] = IBAN_RE.sub("[iban]", event.get("message", ""))
-    return event  # return None instead to drop the event
+    return event
 
 booboo.init(
     dsn="https://YOUR_TOKEN@ingest.booboo.dev/your-org/your-project",
     before_send=scrub_ibans,
 )
 ```
-
-The hook receives every event (exceptions and `capture_message()` calls alike) and runs on
-the SDK's background sender thread, so it never adds latency to your request path.
 
 ## Features
 
