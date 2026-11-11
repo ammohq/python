@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ammo-self-hosted]
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +27,7 @@ jobs:
         run: ruff check .
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ammo-self-hosted]
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
@@ -47,7 +47,7 @@ jobs:
         run: pytest
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ammo-self-hosted]
     steps:
       - uses: actions/checkout@v4
 
